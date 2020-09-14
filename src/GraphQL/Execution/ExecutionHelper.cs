@@ -101,7 +101,8 @@ namespace GraphQL.Execution
 
             try
             {
-                AssertValidVariableValue(schema, type, input, variable.Name, variable.DefaultValue != null);
+                //AssertValidVariableValue(schema, type, input, variable.Name, variable.DefaultValue != null);
+                return GetVariableValue(schema, type, input, variable.Name, variable.DefaultValue);
             }
             catch (InvalidVariableError error)
             {
@@ -109,12 +110,12 @@ namespace GraphQL.Execution
                 throw;
             }
 
-            if (input == null && variable.DefaultValue != null)
-            {
-                return variable.DefaultValue.Value;
-            }
+            //if (input == null && variable.DefaultValue != null)
+            //{
+            //    return variable.DefaultValue.Value;
+            //}
 
-            return CoerceValue(schema, type, input.AstFromValue(schema, type));
+            //return CoerceValue(schema, type, input.AstFromValue(schema, type));
         }
 
         public static void AssertValidVariableValue(ISchema schema, IGraphType type, object input, string variableName, bool hasDefaultValue)
@@ -227,6 +228,134 @@ namespace GraphQL.Execution
                     AssertValidVariableValue(schema, field.ResolvedType, fieldValue, $"{variableName}.{field.Name}", hasDefaultValue);
                 }
                 return;
+            }
+
+            throw new InvalidVariableError(variableName ?? "input", "Invalid input");
+        }
+
+        public static object GetVariableValue(ISchema schema, IGraphType type, object input, string variableName, object defaultValue)
+        {
+            // see also GraphQLExtensions.IsValidLiteralValue
+            if (type is NonNullGraphType graphType)
+            {
+                var nonNullType = graphType.ResolvedType;
+
+                if (input == null && defaultValue == null)
+                {
+                    throw new InvalidVariableError(variableName, "Received a null input for a non-null variable.");
+                }
+
+                return GetVariableValue(schema, nonNullType, input, variableName, defaultValue);
+            }
+
+            if (input == null)
+            {
+                return defaultValue;
+            }
+
+            if (type is ScalarGraphType scalar)
+            {
+                // verify value can be converted successfully
+
+                if (input is IValue value)
+                {
+                    object parsedValue;
+
+                    try
+                    {
+                        parsedValue = scalar.ParseLiteral(value);
+                    }
+                    catch (Exception ex)
+                    {
+                        throw new InvalidVariableError(variableName, $"Unable to convert '{value.Value}' to '{type.Name}'", ex);
+                    }
+
+                    if (parsedValue == null)
+                        throw new InvalidVariableError(variableName, $"Unable to convert '{value.Value}' to '{type.Name}'");
+
+                    return parsedValue;
+                }
+                else
+                {
+                    object parsedValue = null;
+
+                    try
+                    {
+                        parsedValue = scalar.ParseValue(input);
+                    }
+                    catch (Exception ex)
+                    {
+                        throw new InvalidVariableError(variableName, $"Unable to convert '{input}' to '{type.Name}'", ex);
+                    }
+
+                    if (parsedValue == null)
+                        throw new InvalidVariableError(variableName, $"Unable to convert '{input}' to '{type.Name}'");
+
+                    return parsedValue;
+                }
+            }
+
+            if (type is ListGraphType listType)
+            {
+                var listItemType = listType.ResolvedType;
+
+                if (input is IEnumerable list && !(input is string))
+                {
+                    var parsedList = list is ICollection collection ? new List<object>(collection.Count) : new List<object>();
+                    var index = -1;
+                    foreach (var item in list)
+                        parsedList.Add(GetVariableValue(schema, listItemType, item, $"{variableName}[{++index}]", null));
+                    return parsedList;
+                }
+                else
+                {
+                    throw new InvalidVariableError(variableName,
+                        $"Unable to parse input as a list of '{listItemType}' types.");
+                }
+            }
+
+            if (type is IObjectGraphType || type is IInputObjectGraphType)
+            {
+                var complexType = (IComplexGraphType)type;
+
+                if (!(input is IDictionary<string, object> dict))
+                {
+                    throw new InvalidVariableError(variableName,
+                        $"Unable to parse input as a '{type.Name}' type. Did you provide a List or Scalar value accidentally?");
+                }
+
+                // ensure every provided field is defined
+                foreach (var key in dict.Keys)
+                {
+                    bool matched = false;
+                    foreach (var field in complexType.Fields)
+                    {
+                        if (key == field.Name) {
+                            matched = true;
+                            break;
+                        }
+                    }
+
+                    if (!matched)
+                    {
+                        var unknownFields = dict.Keys
+                            .Except(complexType.Fields.Select(f => f.Name))
+                            .ToList();
+
+                        throw new InvalidVariableError(variableName,
+                            $"Unrecognized input fields {string.Join(", ", unknownFields.Select(k => $"'{k}'"))} for type '{type.Name}'.");
+                    }
+                }
+
+                var newDic = new Dictionary<string, object>(dict.Count);
+                foreach (var field in complexType.Fields)
+                {
+                    dict.TryGetValue(field.Name, out object fieldValue);
+                    newDic.Add(
+                        field.Name,
+                        GetVariableValue(schema, field.ResolvedType, fieldValue, $"{variableName}.{field.Name}", null));
+                }
+                return newDic;
             }
 
             throw new InvalidVariableError(variableName ?? "input", "Invalid input");

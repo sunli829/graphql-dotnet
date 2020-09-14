@@ -257,3 +257,37 @@ passed from another service. Therefore, the database context must remain scoped.
 Finally, you can create a scope within each field resolver that relies on Entity Framework
 or your other scoped services. Please see the section on this in the
 [dependency injection documentation](../getting-started/dependency-injection#scoped-services-with-a-singleton-schema-lifetime).
+
+### Unable to serialize values with enumeration types
+
+When using enumeration values, be sure that you are using the enumeration member
+or value rather than the name when configuring the enumeration type.
+You cannot return an enumeration member by the name.
+
+```csharp
+public enum IsSet
+{
+    NotSet = 0,
+    Set = 1
+}
+
+public class AssignmentStateEnumType  : EnumerationGraphType {
+    public AssignmentStateEnumType()
+    {
+        AddValue(name: "NotAssigned", description: "There is no assignment", value: IsSet.NotSet);
+        AddValue(name: "Assigned", description: "There is an assignment", value: IsSet.Set);
+    }
+}
+
+class MyGraphType : ObjectGraphType
+{
+    public MyGraphType()
+    {
+        // valid
+        Field<AssignmentStateEnumType>("Test", resolve: context => IsSet.Set);
+
+        // not valid
+        Field<AssignmentStateEnumType>("Test", resolve: context => "Assigned");
+    }
+}
+```

@@ -46,13 +46,6 @@ namespace GraphQL.Types
 
         public override object Serialize(object value)
         {
-            var valueString = value.ToString();
-            var foundByName = Values.FindByName(valueString);
-            if (foundByName != null)
-            {
-                return foundByName.Name;
-            }
-
             var foundByValue = Values.FindByValue(value);
             return foundByValue?.Name;
         }

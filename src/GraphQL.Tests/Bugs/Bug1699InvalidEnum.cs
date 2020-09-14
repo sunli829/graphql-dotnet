@@ -38,7 +38,7 @@ namespace GraphQL.Tests.Bugs
         public void Custom_Enum_Numbered_From_Name() => AssertQuerySuccess("{ customEnumSleepy }", @"{ ""customEnumSleepy"": ""ISSLEEPY"" }");
 
         [Fact]
-        public void String_Enum() => AssertQuerySuccess("{ sleepy }", @"{ ""sleepy"": ""SLEEPY"" }");
+        public void String_Enum() => AssertQueryWithError("{ sleepy }", @"{ ""sleepy"": null }", "Error trying to resolve field 'sleepy'.", 1, 3, "sleepy", exception: new InvalidOperationException());
 
         [Fact]
         public void Int_Enum() => AssertQuerySuccess("{ happy }", @"{ ""happy"": ""HAPPY"" }");
