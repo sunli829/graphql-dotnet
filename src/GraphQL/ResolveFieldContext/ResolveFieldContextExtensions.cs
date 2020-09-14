@@ -48,10 +48,14 @@ namespace GraphQL
                 if (argumentType.IsPrimitive())
                     throw new InvalidOperationException($"Could not read primitive type '{argumentType.FullName}' from complex argument '{argumentName}'");
 
+                //todo: use the inputobjectgraphtype.parse function instead
                 result = inputObject.ToObject(argumentType, context.FieldDefinition?.Arguments?.Find(argumentName)?.ResolvedType);
+                //if the result is a dictionary, then call toobject with the actual object type
+                //otherwise use the converter to convert it to the requested type
                 return true;
             }
 
+            //todo: don't use getpropertyvalue at all ???
             result = arg.GetPropertyValue(argumentType);
             return true;
         }
